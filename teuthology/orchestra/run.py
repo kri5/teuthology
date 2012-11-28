@@ -261,7 +261,7 @@ def run(
     return r
 
 
-def wait(processes):
+def wait(processes, timeout=None):
     """
     Wait for all given processes to exit.
 
@@ -269,4 +269,4 @@ def wait(processes):
     """
     for proc in processes:
         assert isinstance(proc.exitstatus, gevent.event.AsyncResult)
-        proc.exitstatus.get()
+        proc.exitstatus.get(timeout=timeout)
