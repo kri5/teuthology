@@ -4,8 +4,61 @@ import os
 
 from teuthology import misc as teuthology
 from ..orchestra import run
+from gevent.timeout import Timeout
 
 log = logging.getLogger(__name__)
+
+def _fuse_unmount(remote, mnt):
+    remote.run(
+        args=[
+            'fusermount',
+            '-u',
+            mnt,
+            ],
+        )
+
+def _abort_fuse_mount(remote, mnt):
+    # abort the fuse mount, killing all hung processes
+    remote.run(
+        args=[
+            'echo',
+            '1',
+            run.Raw('>'),
+            run.Raw('/sys/fs/fuse/connections/*/abort'),
+            ],
+        )
+    # make sure its unmounted
+    remote.run(
+        args=[
+            'sudo',
+            'umount',
+            '-l',
+            '-f',
+            mnt,
+            ],
+        )
+
+def _wait_for_daemons(remote, fuse_daemons, timeout=None):
+    # make sure we wait even after the process is killed
+    done = False
+    while not done:
+        try:
+            run.wait(fuse_daemons.itervalues(), timeout=timeout)
+            done = True
+        except Timeout:
+            log.error('fuse client did not exit after {timeout} seconds'.format(timeout=timeout))
+            log.error('sending SIGKILL to ceph-fuse process')
+            # kill the fuse client
+            # todo: figure out how to get the process ids from the
+            # fuse_daemons
+            remote.run(
+                args=[
+                    'sudo',
+                    'killall',
+                    '-9',
+                    'ceph-fuse',
+                    ],
+                )
 
 @contextlib.contextmanager
 def task(ctx, config):
@@ -39,6 +92,24 @@ def task(ctx, config):
         - ceph-fuse:
             client.0:
               valgrind: [--tool=memcheck, --leak-check=full, --show-reachable=yes]
+        - interactive:
+
+    Example that sets a timeout (in seconds) for the ceph-fuse process to finish after unmount:
+
+        tasks:
+        - ceph:
+        - ceph-fuse:
+            client.0:
+              timeout: 300
+        - interactive:
+
+    Example that performs cleanup even if the fuse process fails:
+
+        tasks:
+        - ceph:
+        - ceph-fuse:
+            client.0:
+              cleanup_on_failure: true
         - interactive:
 
     """
@@ -125,38 +196,27 @@ def task(ctx, config):
     finally:
         log.info('Unmounting ceph-fuse clients...')
         for id_, remote in clients:
+            client_config = config.get("client.%s" % id_)
+            if client_config is None:
+                client_config = {}
+            fuse_timeout = client_config.get('timeout')
+            cleanup_on_failure = client_config.get('cleanup_on_failure', False)
+
             mnt = os.path.join('/tmp/cephtest', 'mnt.{id}'.format(id=id_))
             try:
-              remote.run(
-                  args=[
-                      'fusermount',
-                      '-u',
-                      mnt,
-                      ],
-                  )
-            except CommandFailedError as e:
-              log.info('Failed to unmount ceph-fuse on {name}, aborting...'.format(name=remote.name))
-              # abort the fuse mount, killing all hung processes
-              remote.run(
-                  args=[
-                      'echo',
-                      '1',
-                      run.Raw('>'),
-                      run.Raw('/sys/fs/fuse/connections/*/abort'),
-                      ],
-                 )
-              # make sure its unmounted
-              remote.run(
-                  args=[
-                      'sudo',
-                      'umount',
-                      '-l',
-                      '-f',
-                      mnt,
-                      ],
-                  )
+                _fuse_unmount(remote, mnt)
+            except run.CommandFailedError as e:
+                if not cleanup_on_failure:
+                    raise
+                log.error('fuse failed to unmount, cleaning up anyway')
+                _abort_fuse_mount(remote, mnt)
 
-        run.wait(fuse_daemons.itervalues())
+            try:
+                _wait_for_daemons(remote, fuse_daemons, timeout=fuse_timeout)
+            except run.CommandFailedError as e:
+                if not cleanup_on_failure:
+                    raise
+                log.info('ceph-fuse process failed, cleaning up anyway')
 
         for id_, remote in clients:
             mnt = os.path.join('/tmp/cephtest', 'mnt.{id}'.format(id=id_))
