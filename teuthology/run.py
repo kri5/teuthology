@@ -6,7 +6,6 @@ import contextlib
 import sys
 from traceback import format_tb
 
-
 def config_file(string):
     config = {}
     try:
@@ -88,6 +87,7 @@ def parse_args():
 
 def set_up_logging(ctx):
     import logging
+    import sentry
 
     loglevel = logging.INFO
     if ctx.verbose:
@@ -100,12 +100,15 @@ def set_up_logging(ctx):
         handler = logging.FileHandler(
             filename=os.path.join(ctx.archive, 'teuthology.log'),
         )
+
         formatter = logging.Formatter(
             fmt='%(asctime)s.%(msecs)03d %(levelname)s:%(name)s:%(message)s',
             datefmt='%Y-%m-%dT%H:%M:%S',
         )
         handler.setFormatter(formatter)
         logging.getLogger().addHandler(handler)
+
+    sentry.setup_logging()
 
     install_except_hook()
 
