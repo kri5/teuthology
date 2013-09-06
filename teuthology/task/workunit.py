@@ -119,8 +119,8 @@ def _delete_dir(ctx, role, subdir):
                 ],
             )
         log.info("Deleted dir {dir}".format(dir=client))
-    except:
-        log.debug("Caught an execption deleting dir {dir}".format(dir=client))
+    except Exception:
+        log.exception("Caught an execption deleting dir {dir}".format(dir=client))
 
     try:
         remote.run(
@@ -131,8 +131,8 @@ def _delete_dir(ctx, role, subdir):
                 ],
             )
         log.info("Deleted dir {dir}".format(dir=mnt))
-    except:
-        log.debug("Caught an execption deleting dir {dir}".format(dir=mnt))
+    except Exception:
+        log.exception("Caught an execption deleting dir {dir}".format(dir=mnt))
 
 def _make_scratch_dir(ctx, role, subdir):
     retVal = False
@@ -153,7 +153,7 @@ def _make_scratch_dir(ctx, role, subdir):
                 ],
             )
         log.info('Did not need to create dir {dir}'.format(dir=mnt))
-    except:
+    except Exception:
         remote.run(
             args=[
                 'mkdir',
@@ -280,7 +280,6 @@ def _run_tests(ctx, refspec, role, tests, env, subdir=None):
                     run.Raw('CEPH_REF={ref}'.format(ref=refspec)),
                     run.Raw('TESTDIR="{tdir}"'.format(tdir=testdir)),
                     run.Raw('CEPH_ID="{id}"'.format(id=id_)),
-                    run.Raw('PYTHONPATH="$PYTHONPATH:{tdir}/binary/usr/local/lib/python2.7/dist-packages:{tdir}/binary/usr/local/lib/python2.6/dist-packages"'.format(tdir=testdir)),
                     ]
                 if env is not None:
                     for var, val in env.iteritems():

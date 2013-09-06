@@ -108,7 +108,8 @@ def ceph_log(ctx, config):
         ctx.cluster.run(
             args=[
                 'sudo',
-                'install', '-d', '-m0755', '--',
+                'chmod',
+                '777',
                 '/var/log/ceph',
                 ],
             wait=False,
@@ -229,7 +230,7 @@ def valgrind_post(ctx, config):
                     continue
                 try:
                     (file, kind) = line.split(':')
-                except:
+                except Exception:
                     log.error('failed to split line %s', line)
                     raise
                 log.debug('file %s kind %s', file, kind)
@@ -506,10 +507,10 @@ def cluster(ctx, config):
                     '-p',
                     '/var/lib/ceph/mds/ceph-{id}'.format(id=id_),
                     run.Raw('&&'),
+                    'sudo',
                     '{tdir}/adjust-ulimits'.format(tdir=testdir),
                     'ceph-coverage',
                     coverage_dir,
-                    'sudo',
                     'ceph-authtool',
                     '--create-keyring',
                     '--gen-key',
@@ -609,11 +610,11 @@ def cluster(ctx, config):
         for id_ in teuthology.roles_of_type(roles_for_host, 'osd'):
             remote.run(
                 args=[
+                    'sudo',
                     'MALLOC_CHECK_=3',
                     '{tdir}/adjust-ulimits'.format(tdir=testdir),
                     'ceph-coverage',
                     coverage_dir,
-                    'sudo',
                     'ceph-osd',
                     '--mkfs',
                     '--mkkey',
@@ -694,10 +695,10 @@ def cluster(ctx, config):
                 )
             remote.run(
                 args=[
+                    'sudo',
                     '{tdir}/adjust-ulimits'.format(tdir=testdir),
                     'ceph-coverage',
                     coverage_dir,
-                    'sudo',
                     'ceph-mon',
                     '--mkfs',
                     '-i', id_,
@@ -722,7 +723,7 @@ def cluster(ctx, config):
 
     try:
         yield
-    except:
+    except Exception:
         # we need to know this below
         ctx.summary['success'] = False
         raise
@@ -873,10 +874,10 @@ def run_daemon(ctx, config, type_):
                 num_active += 1
 
             run_cmd = [
+                'sudo',
                 '{tdir}/adjust-ulimits'.format(tdir=testdir),
                 'ceph-coverage',
                 coverage_dir,
-                'sudo',
                 '{tdir}/daemon-helper'.format(tdir=testdir),
                 daemon_signal,
                 ]

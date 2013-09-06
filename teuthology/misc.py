@@ -31,7 +31,7 @@ def get_testdir(ctx):
     if 'test_path' in ctx.teuthology_config:
         return ctx.teuthology_config['test_path']
 
-    basedir = ctx.teuthology_config.get('base_test_dir', '/home/ubuntu/cephtest')
+    basedir = get_testdir_base(ctx)
 
     global global_jobid
     global checked_jobid
@@ -86,10 +86,27 @@ def get_testdir(ctx):
                     user=get_user()[0:2],
                     stamp=stamp)
 
+
+def get_test_user(ctx):
+    """
+    :returns: str -- the user to run tests as on remote hosts
+    """
+    return ctx.teuthology_config.get('test_user', 'ubuntu')
+
+
 def get_testdir_base(ctx):
     if 'test_path' in ctx.teuthology_config:
         return ctx.teuthology_config['test_path']
-    return ctx.teuthology_config.get('base_test_dir', '/home/ubuntu/cephtest')
+    test_user = get_test_user(ctx)
+    # FIXME this ideally should use os.path.expanduser() in the future, in case
+    # $HOME isn't /home/$USER - e.g. on a Mac. However, since we're executing
+    # this on the server side, it won't work properly.
+    return ctx.teuthology_config.get('base_test_dir', '/home/%s/cephtest' %
+                                     test_user)
+
+def get_archive_dir(ctx):
+    test_dir = get_testdir(ctx)
+    return os.path.normpath(os.path.join(test_dir, 'archive'))
 
 def get_ceph_binary_url(package=None,
                         branch=None, tag=None, sha1=None, dist=None,
@@ -567,7 +584,7 @@ def get_wwn_id_map(remote, devs):
             stdout=StringIO(),
             )
         stdout = r.stdout.getvalue()
-    except:
+    except Exception:
         log.error('Failed to get wwn devices! Using /dev/sd* devices...')
         return dict((d,d) for d in devs)
 
@@ -600,7 +617,7 @@ def get_scratch_devices(remote):
     try:
         file_data = get_file(remote, "/scratch_devs")
         devs = file_data.split()
-    except:
+    except Exception:
         r = remote.run(
                 args=['ls', run.Raw('/dev/[sv]d?')],
                 stdout=StringIO()
@@ -618,6 +635,7 @@ def get_scratch_devices(remote):
     retval = []
     for dev in devs:
         try:
+            # FIXME: Split this into multiple calls.
             remote.run(
                 args=[
                     # node exists
@@ -632,12 +650,13 @@ def get_scratch_devices(remote):
                     'mount',
                     run.Raw('|'),
                     'grep', '-q', dev,
-                    ]
-                )
+                ]
+            )
             retval.append(dev)
-        except:
-            pass
+        except run.CommandFailedError:
+            log.debug("get_scratch_devices: %s is in use" % dev)
     return retval
+
 
 def wait_until_healthy(ctx, remote):
     """Wait until a Ceph cluster is healthy."""

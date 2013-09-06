@@ -42,7 +42,7 @@ PACKAGES['ceph']['deb'] = [
     'librbd1-dbg',
 ]
 PACKAGES['ceph']['rpm'] = [
-    'ceph-debug',
+    'ceph-debuginfo',
     'ceph-radosgw',
     'ceph-test',
     'ceph-devel',
@@ -98,13 +98,12 @@ def _get_config_value_for_remote(ctx, remote, config, key):
     """
     roles = ctx.cluster.remotes[remote]
     if 'all' in config:
-        return config['all'][key]
+        return config['all'].get(key)
     elif roles:
         for role in roles:
             if role in config and key in config[role]:
-                return config[role][key]
-    if key in config:
-        return config[key]
+                return config[role].get(key)
+    return config.get(key)
 
 
 def _get_baseurlinfo_and_dist(ctx, remote, config):
@@ -128,6 +127,12 @@ def _get_baseurlinfo_and_dist(ctx, remote, config):
     :param: config -- the config dict
     :returns: dict -- the information you want.
     """
+    # XXX CLEANUP
+    # This helper function is in *dire* need of cleaning up What is `relval`?
+    # Why so many `dist_` prepending keys?
+    # The below list is an unfortunate usage of variables that confuse and make
+    # it harder to read/understand/improve anything here:
+    # dist, distro, distro_release, dist_release, dist_name, distri
     retval = {}
     relval = None
     r = remote.run(
@@ -157,7 +162,7 @@ def _get_baseurlinfo_and_dist(ctx, remote, config):
         distri = retval['distro']
         dist_name = 'fc'
         retval['distro_release'] = '%s%s' % (dist_name, retval['relval'])
-        retval['dist_release'] = retval['distro_release']
+        retval['dist'] = retval['dist_release'] = retval['distro_release']
     else:
         r = remote.run(
             args=['lsb_release', '-sc'],
@@ -266,6 +271,7 @@ def _update_deb_package_list_and_install(ctx, remote, debs, config):
             'sudo', 'apt-key', 'list', run.Raw('|'), 'grep', 'Ceph',
         ],
         stdout=StringIO(),
+        check_status=False,
     )
     if r.stdout.getvalue().find('Ceph automated package') == -1:
         # if it doesn't exist, add it
@@ -377,7 +383,7 @@ def _update_rpm_package_list_and_install(ctx, remote, rpm, config):
         # fail with the message 'rpm: no packages given for install'
         remote.run(args=['wget', base_url, ],)
         remote.run(args=['sudo', 'rpm', '-i', rpm_name, ], stderr=err_mess, )
-    except:
+    except Exception:
         cmp_msg = 'package {pkg} is already installed'.format(
             pkg=ceph_release)
         if cmp_msg != err_mess.getvalue().strip():
@@ -681,7 +687,7 @@ deb_packages = {'ceph': [
 ]}
 
 rpm_packages = {'ceph': [
-    'ceph-debug',
+    'ceph-debuginfo',
     'ceph-radosgw',
     'ceph-test',
     'ceph-devel',
@@ -774,6 +780,7 @@ def _upgrade_deb_packages(ctx, config, remote, debs, branch):
             'sudo', 'apt-key', 'list', run.Raw('|'), 'grep', 'Ceph',
         ],
         stdout=StringIO(),
+        check_status=False,
     )
     if r.stdout.getvalue().find('Ceph automated package') == -1:
         # if it doesn't exist, add it
@@ -824,7 +831,10 @@ def _upgrade_deb_packages(ctx, config, remote, debs, branch):
             check_status=False,
         )
         if r.exitstatus != 0:
-            time.sleep(15)
+            if config.get('wait_for_package'):
+                log.info('Package not there yet, waiting...')
+                time.sleep(15)
+                continue
             raise Exception('failed to fetch package version from %s' %
                             base_url + '/version')
         version = r.stdout.getvalue().strip()
@@ -908,6 +918,11 @@ def _upgrade_rpm_packages(ctx, config, remote, pkgs, branch):
     _run_and_log_error_if_fails(remote, args)
     _yum_fix_repo_priority(remote, project)
 
+    remote.run(
+        args=[
+            'sudo', 'yum', 'clean', 'all',
+        ])
+
     # Build a space-separated string consisting of $PKG-$VER for yum
     pkgs_with_vers = ["%s-%s" % (pkg, version) for pkg in pkgs]
 
@@ -972,6 +987,7 @@ def upgrade(ctx, config):
                 _upgrade_deb_packages(ctx, config, remote, pkgs, branch)
             elif system_type == 'rpm':
                 _upgrade_rpm_packages(ctx, config, remote, pkgs, branch)
+    # FIXME: I highly doubt if this needs to be a separate codepath.
     else:
         list_roles = []
         for role in config.keys():
@@ -986,7 +1002,10 @@ def upgrade(ctx, config):
                         system_type = teuthology.get_system_type(remote)
                         assert system_type in ('deb', 'rpm')
                         pkgs = PACKAGES[project][system_type]
-                        _upgrade_deb_packages(ctx, config, remote, pkgs, branch)
+                        if system_type == 'deb':
+                            _upgrade_deb_packages(ctx, config, remote, pkgs, branch)
+                        elif system_type == 'rpm':
+                            _upgrade_rpm_packages(ctx, config, remote, pkgs, branch)
                         list_roles.append(remote)
     yield
 
