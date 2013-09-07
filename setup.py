@@ -26,6 +26,7 @@ setup(
             'teuthology-updatekeys = teuthology.lock:update_hostkeys',
             'teuthology-coverage = teuthology.coverage:analyze',
             'teuthology-results = teuthology.suite:results',
+            'teuthology-rados-bench = teuthology.rados_bench:collect',
             ],
         },
 
