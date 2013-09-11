@@ -20,6 +20,7 @@ from teuthology import misc
 from teuthology import safepath
 from teuthology import lock as lock
 from teuthology.config import config
+from teuthology import results_db
 
 log = logging.getLogger(__name__)
 
@@ -435,6 +436,10 @@ def _results(args):
                 break
             time.sleep(10)
     log.info('Tests finished! gathering results...')
+
+    for job in get_jobs(args.archive_dir):
+        job_dir = os.path.join(args.archive_dir, job)
+        results_db.store_in_database(job_dir)
 
     (subject, body) = build_email_body(args.name, args.archive_dir,
                                        args.timeout)
