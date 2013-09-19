@@ -126,6 +126,7 @@ name=`whoami`"-$stamp-$nicesuite-$ceph-$kernel-$flavor-$mtype"
 
 echo "name $name"
 
+export TEUTH_DB_YAML="/home/ubuntu/db.yaml"
 ./virtualenv/bin/teuthology-suite -v $fn \
     --base ~/src/ceph-qa-suite/suites \
     --collections $suite \
