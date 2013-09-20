@@ -437,10 +437,6 @@ def _results(args):
             time.sleep(10)
     log.info('Tests finished! gathering results...')
 
-    for job in get_jobs(args.archive_dir):
-        job_dir = os.path.join(args.archive_dir, job)
-        results_db.store_in_database(job_dir)
-
     (subject, body) = build_email_body(args.name, args.archive_dir,
                                        args.timeout)
 
@@ -454,6 +450,11 @@ def _results(args):
             )
     finally:
         generate_coverage(args)
+
+    for job in get_jobs(args.archive_dir):
+        job_dir = os.path.join(args.archive_dir, job)
+        log.info("DEBUG save in: %s" % job_dir)
+        #results_db.store_in_database(job_dir)
 
 
 def get_jobs(archive_dir):
